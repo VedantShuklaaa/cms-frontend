@@ -90,6 +90,47 @@ bun run start    # serve the production build
 3. Build the frontend with `NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1`.
 4. Serve the result with `bun run start` (or any Node host) behind HTTPS.
 
+## Security
+
+Every response is served with hardened headers from `next.config.ts`:
+
+| Header | Purpose |
+| --- | --- |
+| `Content-Security-Policy` | Restricts content to `'self'` and the API origin; blocks objects, frames, form posts elsewhere, and base-URI hijacking |
+| `Strict-Transport-Security` | Production only: `max-age=63072000; includeSubDomains; preload` |
+| `X-Content-Type-Options` | `nosniff` — no MIME-type guessing |
+| `X-Frame-Options` | `DENY` — legacy clickjacking protection |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | Disables camera, microphone, geolocation, payment, USB, sensors and Topics |
+| `Cross-Origin-Opener-Policy` | `same-origin` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Origin-Agent-Cluster` | `?1` — origin-keyed agent clustering |
+| `X-DNS-Prefetch-Control` | `off` — no DNS prefetch leaks |
+| `X-Permitted-Cross-Domain-Policies` | `none` |
+| `X-XSS-Protection` | `0` — disables the legacy auditor |
+| `X-Download-Options` | `noopen` |
+
+`x-powered-by` is disabled (`poweredByHeader: false`) and production browser source maps are off.
+
+Notes:
+
+- `connect-src` is derived from `NEXT_PUBLIC_API_BASE_URL` **at build time**. If the API origin
+  changes, rebuild the frontend or the browser will block the API calls.
+- The CSP allows `'unsafe-inline'` for scripts and styles because Cache Components (PPR) rules out
+  nonce-based policies and the App Router streams its payload through inline scripts. If you ever
+  disable `cacheComponents`, replace this with a nonce-based policy generated in `proxy.ts` (the
+  Next.js 16 name for middleware) for a stricter policy.
+- `upgrade-insecure-requests` is added to the production CSP when the API origin is HTTPS. Gating
+  it on the API scheme keeps a production build served locally over plain HTTP (`bun run start`)
+  usable.
+- HSTS is only sent in production. `preload` has no effect until the domain is submitted at
+  <https://hstspreload.org>; remove it if you cannot commit to HTTPS on every subdomain.
+- The JWT is stored in `localStorage`, so any script running on the origin can read it — the CSP is
+  what limits that exposure. Moving to `HttpOnly` cookies requires backend support (the login
+  response must set the cookie) and is recommended for higher assurance.
+- Development CSP additionally allows `'unsafe-eval'` and WebSocket connections for HMR. Those are
+  never included in a production build.
+
 ## Project structure
 
 ```
